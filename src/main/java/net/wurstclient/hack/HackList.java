@@ -189,7 +189,7 @@ public final class HackList implements UpdateListener
 	public final XRayHack xRayHack = new XRayHack();
 	
 	public final BoryTestHack boryTestHack = new BoryTestHack();
-
+	
 	private final TreeMap<String, Hack> hax =
 		new TreeMap<>(String::compareToIgnoreCase);
 	
