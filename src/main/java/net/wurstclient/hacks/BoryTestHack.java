@@ -46,7 +46,6 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
     private MineBoxEntityFinder entityFinder;
     private MineBoxPathFinder pathFinder;
 
-    private final SliderSetting range = new SliderSetting("Range", 2, 1, 2, 0.05, SliderSetting.ValueDisplay.DECIMAL);
     private final SliderSetting fov = new SliderSetting("FOV", "Field of View", 360, 30, 360, 10, ValueDisplay.DEGREES);
     private final SliderSetting rotationSpeed = new SliderSetting("Rotation Speed", 600, 10, 3600, 10, ValueDisplay.DEGREES.withSuffix("/s"));
     private final CheckboxSetting damageIndicator = new CheckboxSetting("Damage Indicator", true);
@@ -55,7 +54,6 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
     public BoryTestHack() {
         super("BoryTest");
         setCategory(Category.FUN);
-        addSetting(range);
         addSetting(fov);
         addSetting(rotationSpeed);
         addSetting(damageIndicator);
@@ -94,36 +92,58 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 
 		boolean isCurentTarget = currentTarget.matchesPlayerName();
 
-		if (isCurentTarget) {
-			
-            Vec3d targetSpot = ParticleUtils.findReachableParticle(range.getValueSq());
-
-            if (targetSpot != null) {
-                currentTarget.setHitBox(targetSpot);
-                faceAndAttack(targetSpot);
-            }
-        }
-
 		if(!pathFinder.isDone()) {
+			System.out.println("2");
 			pathFinder.updatePathfinding(currentTarget.getPos());
 
 			return;
 		}
 
-		if (pathFinder.isDone() && !isCurentTarget && currentTarget == entityFinder.findClosestTarget()) {
-			IKeyBinding.get(MC.options.attackKey).simulatePress(true);
-			IKeyBinding.get(MC.options.attackKey).simulatePress(false);
+		PathProcessor.releaseControls();
 
-			return;
+		if (pathFinder.isDone() && !isCurentTarget) {
+			entityFinder.scan();
+
+			if(isEqualPos(currentTarget.getPos(), entityFinder.findClosestTarget().getPos())) {
+				IKeyBinding.get(MC.options.attackKey).simulatePress(true);
+				IKeyBinding.get(MC.options.attackKey).simulatePress(false);
+
+				return;
+			}
 		}
 
-		pathFinder.reSet();
-		currentTarget = null;
+		if (isCurentTarget) {
+            Vec3d targetSpot = ParticleUtils.findReachableParticle();
+
+            if (targetSpot != null) {
+				System.out.println("7");
+                currentTarget.setHitBox(targetSpot);
+                faceAndAttack(targetSpot);
+            } else {
+				System.out.println("6");
+				currentTarget.setHitBox(null);
+				pathFinder.reSet();
+			}
+
+			return;
+        }
+
+		if(!isCurentTarget) {
+			pathFinder.reSet();
+			currentTarget = null;
+		}	
     }
+
+	private boolean isEqualPos(BlockPos pos1, BlockPos pos2) {
+		return pos1.getX() == pos2.getX() && pos1.getY() == pos2.getY() && pos1.getZ() == pos2.getZ();
+	}
 
     @Override
     public void onMouseUpdate(MouseUpdateEvent event) {
-        if (!pathFinder.isDone() || currentTarget == null) return;
+        if (currentTarget == null) return;
+		if (currentTarget.getHitBox() == null) return;
+
+		System.out.println("4");
 
         int diffYaw = (int) (nextYaw - MC.player.getYaw());
         int diffPitch = (int) (nextPitch - MC.player.getPitch());
@@ -159,7 +179,7 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
     // Utility class for particle handling
     public static class ParticleUtils {
 
-        public static Vec3d findReachableParticle(double rangeSq) {
+        public static Vec3d findReachableParticle() {
             ParticleManager particleManager = MinecraftClient.getInstance().particleManager;
             List<Vec3d> points = new ArrayList<>();
 
@@ -172,7 +192,7 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 
                 for (Queue<Particle> particleQueue : particlesMap.values()) {
                     for (Particle particle : particleQueue) {
-                        if (isGlowParticle(particle) && isParticleReachable(particle, rangeSq)) {
+                        if (isGlowParticle(particle) && isParticleReachable(particle)) {
                             points.add(particle.getBoundingBox().getCenter());
                         }
                     }
@@ -192,11 +212,12 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
             return particle.getClass().getSimpleName().contains("GlowParticle");
         }
 
-        private static boolean isParticleReachable(Particle particle, double rangeSq) {
+        private static boolean isParticleReachable(Particle particle) {
 			Vec3d particlePos = particle.getBoundingBox().getCenter();
 			BlockPos pos = new BlockPos((int) particlePos.x, (int) particlePos.y, (int) particlePos.z);
             BlockPlacingParams params = BlockPlacer.getBlockPlacingParams(pos);
-            return params != null && params.distanceSq() <= rangeSq;
+			double range = 4; // 1 block range
+            return params != null && params.distanceSq() <= range;
         }
 
         private static Vec3d findCenter(List<Vec3d> points) {
@@ -268,6 +289,10 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 		}
 	
 		public boolean matchesPlayerName() {
+			System.out.println(entity.getText().getString());
+			System.out.println(MC.player.getDisplayName().getString());
+			System.out.println(entity.getText().getString().contains(MC.player.getDisplayName().getString()));
+			
 			return entity.getText().getString().contains(MC.player.getDisplayName().getString());
 		}
 	
@@ -315,7 +340,7 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 
 		public boolean isDone() {
 			if(processor == null) return false;
-			return processor.isDone();
+			return processor.isDone() && currentTarget.getPos() != MC.player.getBlockPos();
 		}
 	
 		public void updatePathfinding(BlockPos targetPos) {
