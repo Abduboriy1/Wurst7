@@ -25,8 +25,10 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.Vec3i;
 import net.wurstclient.Category;
 import net.wurstclient.SearchTags;
+import net.wurstclient.WurstClient;
 import net.wurstclient.ai.PathFinder;
 import net.wurstclient.ai.PathProcessor;
 import net.wurstclient.commands.PathCmd;
@@ -47,7 +49,9 @@ import net.wurstclient.util.BlockPlacer.BlockPlacingParams;
 import net.wurstclient.util.EntityUtils;
 import net.wurstclient.util.RegionPos;
 import net.wurstclient.util.RenderUtils;
+
 //TODO The display names sometimes have custom things in them we want the Mincraft account name
+
 @SearchTags({"bory test", "BoryTest", "bory tests"})
 public final class BoryTestHack extends Hack
 	implements UpdateListener, RenderListener, HandleInputListener
@@ -248,6 +252,7 @@ public final class BoryTestHack extends Hack
 	@Override
 	public void onHandleInput()
 	{
+		// TODO After hitting once wait untill target is not the same
 		if(currentTarget == null)
 			return;
 		if(currentTarget.getHitBox() == null)
@@ -396,7 +401,10 @@ public final class BoryTestHack extends Hack
 		
 		public BlockPos getPos()
 		{
-			return new BlockPos(pos.getX(), pos.getY() - 2, pos.getZ());
+			Vec3i tempI = new Vec3i(pos.getX(), pos.getY(), pos.getZ());
+			Vec3d tempD = new Vec3d(tempI);
+			
+			return BlockPos.ofFloored(tempD);
 		}
 		
 		public boolean isHarvestable()
@@ -463,6 +471,10 @@ public final class BoryTestHack extends Hack
 		
 		public boolean matchesPlayerName()
 		{
+			System.out.println(MC.player.getName().getString());
+			System.out.println(MC.player.getDisplayName().getString());
+
+
 			return entity.getText().getString()
 				.contains(MC.player.getDisplayName().getString());
 		}
