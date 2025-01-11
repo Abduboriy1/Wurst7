@@ -7,14 +7,23 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
+import org.lwjgl.opengl.GL11;
+
+import com.mojang.blaze3d.systems.RenderSystem;
+
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.particle.ParticleTextureSheet;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.decoration.InteractionEntity;
 import net.minecraft.entity.decoration.DisplayEntity.TextDisplayEntity;
+import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.wurstclient.Category;
@@ -22,22 +31,29 @@ import net.wurstclient.SearchTags;
 import net.wurstclient.ai.PathFinder;
 import net.wurstclient.ai.PathProcessor;
 import net.wurstclient.commands.PathCmd;
+import net.wurstclient.events.HandleInputListener;
 import net.wurstclient.events.MouseUpdateListener;
 import net.wurstclient.events.RenderListener;
 import net.wurstclient.events.UpdateListener;
 import net.wurstclient.hack.Hack;
 import net.wurstclient.mixinterface.IKeyBinding;
+import net.wurstclient.settings.AttackSpeedSliderSetting;
 import net.wurstclient.settings.CheckboxSetting;
 import net.wurstclient.settings.EspBoxSizeSetting;
 import net.wurstclient.settings.SliderSetting;
 import net.wurstclient.settings.SliderSetting.ValueDisplay;
+import net.wurstclient.settings.SwingHandSetting;
+import net.wurstclient.settings.SwingHandSetting.SwingHand;
 import net.wurstclient.util.BlockPlacer;
 import net.wurstclient.util.BlockPlacer.BlockPlacingParams;
+import net.wurstclient.util.EntityUtils;
+import net.wurstclient.util.RegionPos;
+import net.wurstclient.util.RenderUtils;
 import net.wurstclient.util.Rotation;
 import net.wurstclient.util.RotationUtils;
 
 @SearchTags({"bory test", "BoryTest", "bory tests"})
-public final class BoryTestHack extends Hack implements UpdateListener, MouseUpdateListener, RenderListener {
+public final class BoryTestHack extends Hack implements UpdateListener, MouseUpdateListener, RenderListener, HandleInputListener {
 
     private MineBoxEntity currentTarget;
     private float nextYaw;
@@ -50,6 +66,20 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
     private final SliderSetting rotationSpeed = new SliderSetting("Rotation Speed", 600, 10, 3600, 10, ValueDisplay.DEGREES.withSuffix("/s"));
     private final CheckboxSetting damageIndicator = new CheckboxSetting("Damage Indicator", true);
     private final EspBoxSizeSetting boxSize = new EspBoxSizeSetting("Box Size Mode");
+	private final SwingHandSetting swingHand = new SwingHandSetting(
+		SwingHandSetting.genericCombatDescription(this), SwingHand.CLIENT);
+	
+		private final AttackSpeedSliderSetting speed =
+		new AttackSpeedSliderSetting();
+	
+	private final SliderSetting speedRandMS =
+		new SliderSetting("Speed randomization",
+			"Helps you bypass anti-cheat plugins by varying the delay between"
+				+ " attacks.\n\n" + "\u00b1100ms is recommended for Vulcan.\n\n"
+				+ "0 (off) is fine for NoCheat+, AAC, Grim, Verus, Spartan, and"
+				+ " vanilla servers.",
+			100, 0, 1000, 50, ValueDisplay.INTEGER.withPrefix("\u00b1")
+				.withSuffix("ms").withLabel(0, "off"));
 
     public BoryTestHack() {
         super("BoryTest");
@@ -58,6 +88,9 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
         addSetting(rotationSpeed);
         addSetting(damageIndicator);
         addSetting(boxSize);
+		addSetting(speed);
+		addSetting(speedRandMS);
+		addSetting(swingHand);
     }
 
     @Override
@@ -66,19 +99,21 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
         pathFinder = new MineBoxPathFinder();
         EVENTS.add(UpdateListener.class, this);
         EVENTS.add(MouseUpdateListener.class, this);
+		EVENTS.add(HandleInputListener.class, this);
         EVENTS.add(RenderListener.class, this);
+		
     }
 
     @Override
     protected void onDisable() {
         EVENTS.remove(UpdateListener.class, this);
         EVENTS.remove(MouseUpdateListener.class, this);
+		EVENTS.remove(HandleInputListener.class, this);
         EVENTS.remove(RenderListener.class, this);
         currentTarget = null;
         pathFinder = null;
         entityFinder = null;
         PathProcessor.releaseControls();
-        System.out.println("BORY OFF");
     }
 
     @Override
@@ -93,7 +128,6 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 		boolean isCurentTarget = currentTarget.matchesPlayerName();
 
 		if(!pathFinder.isDone()) {
-			System.out.println("2");
 			pathFinder.updatePathfinding(currentTarget.getPos());
 
 			return;
@@ -103,8 +137,10 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 
 		if (pathFinder.isDone() && !isCurentTarget) {
 			entityFinder.scan();
+			MineBoxEntity tempCurrentClosestTarget = entityFinder.findClosestTarget();
 
-			if(isEqualPos(currentTarget.getPos(), entityFinder.findClosestTarget().getPos())) {
+			if(tempCurrentClosestTarget != null && isEqualPos(currentTarget.getPos(), tempCurrentClosestTarget.getPos())) {
+				currentTarget.lookAt();
 				IKeyBinding.get(MC.options.attackKey).simulatePress(true);
 				IKeyBinding.get(MC.options.attackKey).simulatePress(false);
 
@@ -116,11 +152,9 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
             Vec3d targetSpot = ParticleUtils.findReachableParticle();
 
             if (targetSpot != null) {
-				System.out.println("7");
                 currentTarget.setHitBox(targetSpot);
-                faceAndAttack(targetSpot);
+                // faceAndAttack(targetSpot);
             } else {
-				System.out.println("6");
 				currentTarget.setHitBox(null);
 				pathFinder.reSet();
 			}
@@ -143,15 +177,15 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
         if (currentTarget == null) return;
 		if (currentTarget.getHitBox() == null) return;
 
-		System.out.println("4");
+		// System.out.println("4");
 
-        int diffYaw = (int) (nextYaw - MC.player.getYaw());
-        int diffPitch = (int) (nextPitch - MC.player.getPitch());
+        // int diffYaw = (int) (nextYaw - MC.player.getYaw());
+        // int diffPitch = (int) (nextPitch - MC.player.getPitch());
 
-        if (MathHelper.abs(diffYaw) < 1 && MathHelper.abs(diffPitch) < 1) return;
+        // if (MathHelper.abs(diffYaw) < 1 && MathHelper.abs(diffPitch) < 1) return;
 
-        event.setDeltaX(event.getDefaultDeltaX() + diffYaw);
-        event.setDeltaY(event.getDefaultDeltaY() + diffPitch);
+        // event.setDeltaX(event.getDefaultDeltaX() + diffYaw);
+        // event.setDeltaY(event.getDefaultDeltaY() + diffPitch);
     }
 
     @Override
@@ -160,7 +194,63 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
             PathCmd pathCmd = WURST.getCmds().pathCmd;
             pathFinder.renderPath(matrixStack, pathCmd.isDebugMode(), pathCmd.isDepthTest());
         }
+
+		if(currentTarget == null || !damageIndicator.isChecked()) return;
+		if(currentTarget.getHitBox() == null) return;
+		
+		// GL settings
+		GL11.glEnable(GL11.GL_BLEND);
+		GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+		GL11.glEnable(GL11.GL_CULL_FACE);
+		GL11.glDisable(GL11.GL_DEPTH_TEST);
+		
+		matrixStack.push();
+		
+		RegionPos region = RenderUtils.getCameraRegion();
+		RenderUtils.applyRegionalRenderOffset(matrixStack, region);
+		
+		Box box = new Box(BlockPos.ORIGIN);
+
+		float red = 2F;
+		float green = 2 - red;
+		
+		Vec3d lerpedPos = EntityUtils.getLerpedPos(currentTarget.getHitBox(), partialTicks)
+			.subtract(region.toVec3d());
+		matrixStack.translate(lerpedPos.x, lerpedPos.y, lerpedPos.z);
+		
+		matrixStack.translate(0, 0.05, 0);
+		matrixStack.scale(currentTarget.getHitBox().getWidth(), currentTarget.getHitBox().getHeight(),
+			currentTarget.getHitBox().getWidth());
+		matrixStack.translate(-0.5, 0, -0.5);
+
+		RenderSystem.setShader(ShaderProgramKeys.POSITION);
+		
+		RenderSystem.setShaderColor(red, green, 0, 0.25F);
+		RenderUtils.drawSolidBox(box, matrixStack);
+		
+		RenderSystem.setShaderColor(red, green, 0, 0.5F);
+		RenderUtils.drawOutlinedBox(box, matrixStack);
+		
+		matrixStack.pop();
+		
+		// GL resets
+		RenderSystem.setShaderColor(1, 1, 1, 1);
+		GL11.glEnable(GL11.GL_DEPTH_TEST);
+		GL11.glDisable(GL11.GL_BLEND);
     }
+
+	@Override
+	public void onHandleInput()
+	{
+		if(currentTarget == null) return;
+		if(currentTarget.getHitBox() == null) return;
+		
+		MC.interactionManager.attackEntity(MC.player, currentTarget.getHitBox());
+		swingHand.swing(Hand.MAIN_HAND);
+		
+		currentTarget.setHitBox(null);
+		speed.resetTimer(speedRandMS.getValue());
+	}
 
     private void faceAndAttack(Vec3d targetSpot) {
 		if(targetSpot == null) return;
@@ -232,12 +322,13 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
     }
 
 	public class MineBoxEntity {
-
+		private static final Predicate<Entity> IS_VALID_INTERACT_ENTITY = e -> e instanceof InteractionEntity;
 		private final BlockPos pos;
 		private final boolean isHarvestable;
 		private final MineBoxEntityType type;
 		private final TextDisplayEntity entity;
-		private Vec3d hitBox;
+		private Entity hitBox;
+		private Direction facing;
 	
 		public enum MineBoxEntityType {
 			ALCHEMIST,
@@ -248,6 +339,7 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 		}
 	
 		public MineBoxEntity(TextDisplayEntity entity) {
+			this.facing = entity.getFacing().getOpposite();
 			this.entity = entity;
 			this.pos = entity.getBlockPos();
 			String text = entity.getText().getString();
@@ -271,6 +363,10 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 				return MineBoxEntityType.UNKNOWN;
 			}
 		}
+
+		public void lookAt() {
+			MC.player.setYaw(this.facing.asRotation());
+		}
 	
 		public BlockPos getPos() {
 			return new BlockPos(pos.getX(), pos.getY() - 2, pos.getZ());
@@ -280,19 +376,52 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 			return isHarvestable;
 		}
 	
-		public Vec3d getHitBox() {
+		public Entity getHitBox() {
 			return hitBox;
 		}
-	
+		
 		public void setHitBox(Vec3d hitBox) {
-			this.hitBox = hitBox;
+			if(hitBox == null) {
+				this.hitBox = null;
+				return;
+			}
+			
+			Stream<Entity> stream = StreamSupport.stream(MC.world.getEntities().spliterator(), true)
+				.filter(IS_VALID_INTERACT_ENTITY);
+			
+			List<Entity> closest = new ArrayList<>();
+				
+			for (Entity e : stream.collect(Collectors.toList())) {
+				if (e instanceof InteractionEntity) {
+					InteractionEntity entity = (InteractionEntity) e;
+					if (entity.getBlockPos().getSquaredDistance(hitBox) < 1) {
+						closest.add(entity);
+					}
+					
+				}
+			}
+
+			Entity smallest = null;
+			double smallestSize = 0;
+
+			if (closest.size() > 0) {
+				for (Entity i : closest) {
+					if(smallestSize == 0) {
+						smallest = i;
+						smallestSize = i.getBoundingBox().getLengthX();
+					} else if(i.getBoundingBox().getLengthX() < smallestSize) {
+						smallest = i;
+						smallestSize = i.getBoundingBox().getLengthX();
+					}
+				}
+			} else {
+				smallest = null;
+			}
+
+			this.hitBox = smallest;
 		}
 	
 		public boolean matchesPlayerName() {
-			System.out.println(entity.getText().getString());
-			System.out.println(MC.player.getDisplayName().getString());
-			System.out.println(entity.getText().getString().contains(MC.player.getDisplayName().getString()));
-			
 			return entity.getText().getString().contains(MC.player.getDisplayName().getString());
 		}
 	
@@ -306,11 +435,11 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 		private final List<MineBoxEntity> targets = new ArrayList<>();
 		private final MinecraftClient MC = MinecraftClient.getInstance();
 	
-		private static final Predicate<Entity> IS_VALID_ENTITY = e -> e instanceof TextDisplayEntity;
+		private static final Predicate<Entity> IS_VALID_TEXT_ENTITY = e -> e instanceof TextDisplayEntity;
 	
 		public void scan() {
 			Stream<Entity> stream = StreamSupport.stream(MC.world.getEntities().spliterator(), true)
-					.filter(IS_VALID_ENTITY);
+					.filter(IS_VALID_TEXT_ENTITY);
 			
 			targets.clear();
 			for (Entity e : stream.collect(Collectors.toList())) {
@@ -321,8 +450,6 @@ public final class BoryTestHack extends Hack implements UpdateListener, MouseUpd
 					}
 				}
 			}
-	
-			System.out.println("Found " + targets.size() + " MineBox entities.");
 		}
 	
 		public MineBoxEntity findClosestTarget() {
