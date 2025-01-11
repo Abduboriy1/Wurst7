@@ -31,7 +31,6 @@ import net.wurstclient.ai.PathFinder;
 import net.wurstclient.ai.PathProcessor;
 import net.wurstclient.commands.PathCmd;
 import net.wurstclient.events.HandleInputListener;
-import net.wurstclient.events.MouseUpdateListener;
 import net.wurstclient.events.RenderListener;
 import net.wurstclient.events.UpdateListener;
 import net.wurstclient.hack.Hack;
@@ -48,17 +47,13 @@ import net.wurstclient.util.BlockPlacer.BlockPlacingParams;
 import net.wurstclient.util.EntityUtils;
 import net.wurstclient.util.RegionPos;
 import net.wurstclient.util.RenderUtils;
-import net.wurstclient.util.Rotation;
-import net.wurstclient.util.RotationUtils;
-
+//TODO The display names sometimes have custom things in them we want the Mincraft account name
 @SearchTags({"bory test", "BoryTest", "bory tests"})
-public final class BoryTestHack extends Hack implements UpdateListener,
-	MouseUpdateListener, RenderListener, HandleInputListener
+public final class BoryTestHack extends Hack
+	implements UpdateListener, RenderListener, HandleInputListener
 {
 	
 	private MineBoxEntity currentTarget;
-	private float nextYaw;
-	private float nextPitch;
 	
 	private MineBoxEntityFinder entityFinder;
 	private MineBoxPathFinder pathFinder;
@@ -106,7 +101,6 @@ public final class BoryTestHack extends Hack implements UpdateListener,
 		entityFinder = new MineBoxEntityFinder();
 		pathFinder = new MineBoxPathFinder();
 		EVENTS.add(UpdateListener.class, this);
-		EVENTS.add(MouseUpdateListener.class, this);
 		EVENTS.add(HandleInputListener.class, this);
 		EVENTS.add(RenderListener.class, this);
 		
@@ -116,7 +110,6 @@ public final class BoryTestHack extends Hack implements UpdateListener,
 	protected void onDisable()
 	{
 		EVENTS.remove(UpdateListener.class, this);
-		EVENTS.remove(MouseUpdateListener.class, this);
 		EVENTS.remove(HandleInputListener.class, this);
 		EVENTS.remove(RenderListener.class, this);
 		currentTarget = null;
@@ -195,26 +188,6 @@ public final class BoryTestHack extends Hack implements UpdateListener,
 	}
 	
 	@Override
-	public void onMouseUpdate(MouseUpdateEvent event)
-	{
-		if(currentTarget == null)
-			return;
-		if(currentTarget.getHitBox() == null)
-			return;
-		
-		// System.out.println("4");
-		
-		// int diffYaw = (int) (nextYaw - MC.player.getYaw());
-		// int diffPitch = (int) (nextPitch - MC.player.getPitch());
-		
-		// if (MathHelper.abs(diffYaw) < 1 && MathHelper.abs(diffPitch) < 1)
-		// return;
-		
-		// event.setDeltaX(event.getDefaultDeltaX() + diffYaw);
-		// event.setDeltaY(event.getDefaultDeltaY() + diffPitch);
-	}
-	
-	@Override
 	public void onRender(MatrixStack matrixStack, float partialTicks)
 	{
 		if(pathFinder != null && pathFinder.hasPath())
@@ -286,24 +259,6 @@ public final class BoryTestHack extends Hack implements UpdateListener,
 		
 		currentTarget.setHitBox(null);
 		speed.resetTimer(speedRandMS.getValue());
-	}
-	
-	private void faceAndAttack(Vec3d targetSpot)
-	{
-		if(targetSpot == null)
-			return;
-		Rotation needed = RotationUtils.getNeededRotations(targetSpot);
-		Rotation next = RotationUtils.slowlyTurnTowards(needed,
-			rotationSpeed.getValueI() / 20F);
-		
-		nextYaw = next.yaw();
-		nextPitch = next.pitch();
-		
-		if(RotationUtils.isAlreadyFacing(needed))
-		{
-			IKeyBinding.get(MC.options.attackKey).simulatePress(true);
-			IKeyBinding.get(MC.options.attackKey).simulatePress(false);
-		}
 	}
 	
 	// Utility class for particle handling
