@@ -189,7 +189,8 @@ public final class HackList implements UpdateListener
 	public final XRayHack xRayHack = new XRayHack();
 	
 	public final MineBoxAutoMineHack mineBoxAutoMineHack = new MineBoxAutoMineHack();
-	
+	public final MineBoxSellHaverSackHack mineBoxSellHaverSackHack = new MineBoxSellHaverSackHack();
+
 	private final TreeMap<String, Hack> hax =
 		new TreeMap<>(String::compareToIgnoreCase);
 	

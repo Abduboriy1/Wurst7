@@ -5,16 +5,22 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import java.lang.reflect.Field;
 
 import org.lwjgl.opengl.GL11;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 
+// import baritone.api.BaritoneAPI;
+// import baritone.api.pathing.goals.GoalXZ;
 import net.minecraft.block.AirBlock;
 import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
+import net.minecraft.client.particle.Particle;
+import net.minecraft.client.particle.ParticleManager;
+import net.minecraft.client.particle.ParticleTextureSheet;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
@@ -22,6 +28,7 @@ import net.minecraft.entity.decoration.InteractionEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.decoration.DisplayEntity.TextDisplayEntity;
 import net.minecraft.util.Hand;
+import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
@@ -61,8 +68,24 @@ public final class MineBoxAutoMineHack extends Hack
 	private final CheckboxSetting damageIndicator =
 		new CheckboxSetting("Damage Indicator", true);
 
+	private final CheckboxSetting onlyHarvest =
+		new CheckboxSetting("Only Harvest", true);
+
+	private final CheckboxSetting harvestTrees =
+		new CheckboxSetting("Harvest Trees", true);
+	
+	private final CheckboxSetting harvestOres =
+		new CheckboxSetting("Harvest Ores", true);
+
+	private final CheckboxSetting harvestPlants =
+		new CheckboxSetting("Harvest Plants", true);
+
 	private final SwingHandSetting swingHand = new SwingHandSetting(
 		SwingHandSetting.genericCombatDescription(this), SwingHand.CLIENT);
+
+	private final SliderSetting hitBoxSize = new SliderSetting("Hit Box Size",
+		"Sets the Max size of a hitbox.",
+		.4, .05, 1, 0.05, ValueDisplay.DECIMAL);
 	
 	private final SliderSetting range = new SliderSetting("Range",
 		"Determines how far Killaura will reach to attack entities.\n"
@@ -100,12 +123,17 @@ public final class MineBoxAutoMineHack extends Hack
 		super("MineBoxAutoMine");
 		setCategory(Category.FUN);
 		addSetting(damageIndicator);
+		addSetting(onlyHarvest);
 		addSetting(speed);
 		addSetting(speedRandMS);
 		addSetting(swingHand);
 		addSetting(range);
 		addSetting(peopleSearchRange);
 		addSetting(entitySearchRange);
+		addSetting(hitBoxSize);
+		addSetting(harvestTrees);
+		addSetting(harvestOres);
+		addSetting(harvestPlants);
 	}
 	
 	@Override
@@ -135,6 +163,8 @@ public final class MineBoxAutoMineHack extends Hack
 	public void onUpdate()
 	{
 		speed.updateTimer();
+		if(MC.player == null || MC.world == null)
+			return;
 		
 		PlayerEntity player = MC.player;
 		ClientWorld world = MC.world;
@@ -155,39 +185,23 @@ public final class MineBoxAutoMineHack extends Hack
 			return;
 		}
 		
-		if(currentTarget == null)
-		{
-			entityFinder.scan();
-			currentTarget = entityFinder.findClosestTarget();
-			return;
-		}
-		
-		boolean isCurentTarget = currentTarget.matchesPlayerName();
-		
-		if(!pathFinder.isDone())
-		{
-			pathFinder.updatePathfinding(currentTarget.getPos());
+		entityFinder.scan();
+		currentTarget = entityFinder.findClosestTarget();
+		if(currentTarget == null) return;
 			
-			return;
-		}
-		
-		PathProcessor.releaseControls();
-		
-		if(pathFinder.isDone() && !isCurentTarget)
-		{
-			entityFinder.scan();
-			MineBoxEntity tempCurrentClosestTarget =
-				entityFinder.findClosestTarget();
+		if(!onlyHarvest.isChecked()) {
 			
-			if(tempCurrentClosestTarget != null && isEqualPos(
-				currentTarget.getPos(), tempCurrentClosestTarget.getPos()))
+			if(!pathFinder.isDone())
 			{
-				currentTarget.lookAt();
-				currentTarget.setHitBox();
+				BlockPos pos = currentTarget.getPos();
+				pathFinder.updatePathfinding(pos);
 				
 				return;
 			}
+			PathProcessor.releaseControls();
 		}
+
+		boolean isCurentTarget = currentTarget.matchesPlayerName();
 		
 		if(isCurentTarget)
 		{
@@ -197,14 +211,17 @@ public final class MineBoxAutoMineHack extends Hack
 			{
 				pathFinder.reSet();
 			}
+		} else if(!onlyHarvest.isChecked()) {
+			MineBoxEntity tempCurrentClosestTarget =
+				entityFinder.findClosestTarget();
 			
-			return;
-		}
-		
-		if(!isCurentTarget)
-		{
-			pathFinder.reSet();
-			currentTarget = null;
+			if(tempCurrentClosestTarget != null && isEqualPos(
+				currentTarget.getPos(), tempCurrentClosestTarget.getPos()))
+			{
+				currentTarget.lookAt();
+				currentTarget.setHitBox();
+				pathFinder.reSet();
+			}
 		}
 	}
 	
@@ -282,9 +299,20 @@ public final class MineBoxAutoMineHack extends Hack
 		if(!speed.isTimeToAttack())
 			return;
 		
-		MC.interactionManager.attackEntity(MC.player,
+		if(currentTarget.type == MineBoxEntity.MineBoxEntityType.ALCHEMIST)
+		{
+			if(currentTarget.matchesPlayerName()) {
+				MC.interactionManager.attackEntity(MC.player,
+				currentTarget.getHitBox());
+				swingHand.swing(Hand.MAIN_HAND);
+			} else {
+				MC.interactionManager.interactEntityAtLocation(MC.player, currentTarget.getHitBox(), new EntityHitResult(currentTarget.hitBox), Hand.OFF_HAND);
+			}
+		} else {
+			MC.interactionManager.attackEntity(MC.player,
 			currentTarget.getHitBox());
-		swingHand.swing(Hand.MAIN_HAND);
+			swingHand.swing(Hand.MAIN_HAND);
+		}
 		
 		currentTarget.clearHitBox();
 		speed.resetTimer(speedRandMS.getValue());
@@ -383,24 +411,61 @@ public final class MineBoxAutoMineHack extends Hack
 		{
 			this.hitBox = null;
 		}
+
+		public boolean isGlowParticle() {
+			// Access the ParticleManager
+			ParticleManager particleManager = MC.particleManager;
+
+			try {
+				// Access the private particles field using reflection
+				Field particlesField = ParticleManager.class.getDeclaredField("particles");
+				particlesField.setAccessible(true);
+				@SuppressWarnings("unchecked")
+				Map<ParticleTextureSheet, Queue<Particle>> particlesMap = 
+					(Map<ParticleTextureSheet, Queue<Particle>>) particlesField.get(particleManager);
+				
+				// Iterate through particles and try to "hit" those that are reachable
+				for (Queue<Particle> particleQueue : particlesMap.values()) {
+					for (Particle particle : particleQueue) {
+						if (particle.getClass().getSimpleName().contains("GlowParticle")) {
+							return true;
+						}
+					}
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+
+			return false;
+		}
 		
 		public void setHitBox()
 		{
 			double rangeSq = range.getValueSq();
 			Entity smallest = null;
-			double smallestSize = 0;
+			double smallestSize = 0.0;
 			
 			Stream<Entity> stream =
 				StreamSupport.stream(MC.world.getEntities().spliterator(), true)
 					.filter(IS_VALID_INTERACT_ENTITY)
 					.filter(e -> MC.player.squaredDistanceTo(e) <= rangeSq);
 			;
+
+			if(matchesPlayerName()) 
+			{
+				smallestSize = hitBoxSize.getValueSq();	
+			}
 			
 			for(Entity e : stream.collect(Collectors.toList()))
 			{
 				if(e instanceof InteractionEntity)
 				{
-					if(smallestSize == 0)
+					if(currentTarget != null && currentTarget.type == MineBoxEntityType.ALCHEMIST && isGlowParticle())
+					{
+						smallestSize = 1;
+					}
+
+					if(smallestSize == 0.0)
 					{
 						smallest = e;
 						smallestSize = e.getBoundingBox().getLengthX();
@@ -451,8 +516,11 @@ public final class MineBoxAutoMineHack extends Hack
 				{
 					MineBoxEntity entity =
 						new MineBoxEntity((TextDisplayEntity)e);
-					if(entity
-						.getType() == MineBoxEntity.MineBoxEntityType.MINER)
+					if(
+						(entity.getType() == MineBoxEntity.MineBoxEntityType.MINER && harvestOres.isChecked()) ||
+						(entity.getType() == MineBoxEntity.MineBoxEntityType.LUMBERJACK && harvestTrees.isChecked()) ||
+						(entity.getType() == MineBoxEntity.MineBoxEntityType.ALCHEMIST && harvestPlants.isChecked())
+					)
 					{
 						targets.add(entity);
 					}
@@ -479,8 +547,17 @@ public final class MineBoxAutoMineHack extends Hack
 		{
 			if(processor == null)
 				return false;
-			return processor.isDone()
-				&& currentTarget.getPos() != MC.player.getBlockPos();
+			return isOnWantedBlock(currentTarget.getPos(), MC.player.getBlockPos());
+		}
+
+		public boolean isOnWantedBlock(BlockPos pos, BlockPos wantedPos)
+		{
+			if(Math.floor(pos.getX()) == Math.floor(wantedPos.getX()) && Math.floor(pos.getZ()) == Math.floor(wantedPos.getZ()))
+			{
+				return true;
+			}
+
+			return false;
 		}
 		
 		public void updatePathfinding(BlockPos targetPos)

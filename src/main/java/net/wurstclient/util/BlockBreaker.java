@@ -48,9 +48,11 @@ public enum BlockBreaker
 		WURST.getRotationFaker().faceVectorPacket(params.hitVec);
 		
 		// damage block
-		if(!MC.interactionManager.updateBlockBreakingProgress(params.pos,
-			params.side))
-			return false;
+		// if(!MC.interactionManager.updateBlockBreakingProgress(params.pos,
+		// 	params.side))
+		// 	return false;
+		
+		MC.interactionManager.interactBlock(MC.player, Hand.MAIN_HAND, params.toHitResult());
 		
 		// swing arm
 		SwingHand.SERVER.swing(Hand.MAIN_HAND);

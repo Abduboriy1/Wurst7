@@ -53,6 +53,10 @@ dependencies {
 	// In other words, Wurst won't compile without this library,
 	// even though it's Minecraft that actually uses it.
 	modImplementation "com.google.code.findbugs:jsr305:3.0.2"
+
+
+	// Baritone is a pathfinding library that Wurst uses for its AI.
+	// implementation files("libs/baritone-api-fabric-1.11.1-dirty.jar")
 }
 
 loom {

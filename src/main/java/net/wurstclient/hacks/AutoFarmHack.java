@@ -63,6 +63,7 @@ public final class AutoFarmHack extends Hack
 		seeds.put(Blocks.MELON_STEM, Items.MELON_SEEDS);
 		seeds.put(Blocks.NETHER_WART, Items.NETHER_WART);
 		seeds.put(Blocks.COCOA, Items.COCOA_BEANS);
+		seeds.put(Blocks.SWEET_BERRY_BUSH, Items.COCOA_BEANS);
 	}
 	
 	private final HashMap<BlockPos, Item> plants = new HashMap<>();
@@ -125,6 +126,7 @@ public final class AutoFarmHack extends Hack
 		ArrayList<BlockPos> blocks =
 			BlockUtils.getAllInBoxStream(eyesBlock, blockRange)
 				.filter(pos -> pos.getSquaredDistance(eyesVec) <= rangeSq)
+				// .filter(pos -> Math.floor(pos.getY()) == Math.floor(MC.player.getY() + 1.0))
 				.filter(BlockUtils::canBeClicked)
 				.collect(Collectors.toCollection(ArrayList::new));
 		
@@ -164,8 +166,8 @@ public final class AutoFarmHack extends Hack
 	@Override
 	public void onRender(MatrixStack matrixStack, float partialTicks)
 	{
-		renderer.render(matrixStack);
-		overlay.render(matrixStack, partialTicks, currentlyHarvesting);
+		// renderer.render(matrixStack);
+		// overlay.render(matrixStack, partialTicks, currentlyHarvesting);
 	}
 	
 	/**
@@ -208,6 +210,9 @@ public final class AutoFarmHack extends Hack
 		if(block instanceof NetherWartBlock)
 			return state.get(NetherWartBlock.AGE) >= 3;
 		
+		if(block instanceof SweetBerryBushBlock)
+			return state.get(SweetBerryBushBlock.AGE) >= 2;
+
 		if(block instanceof CocoaBlock)
 			return state.get(CocoaBlock.AGE) >= 2;
 		
@@ -366,4 +371,5 @@ public final class AutoFarmHack extends Hack
 		
 		overlay.updateProgress();
 	}
+	
 }
